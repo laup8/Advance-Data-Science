@@ -1,0 +1,204 @@
+---
+title: "Which is the best team ever in Italian soccer?"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+# cache results
+knitr::opts_chunk$set(cache=FALSE, echo = TRUE, eval = FALSE, message=FALSE, warning = FALSE, fig.align='center')
+```
+
+This challenge explores all matches of Italian soccer Serie A league from 1993 to current year. The dataset is contained in the website [football-data.co.uk](http://www.football-data.co.uk/italym.php).
+
+### Challenges
+
+1.  Think about how to scrape the data from the website, but write no code at this stage.
+2.  Ask AI to write code to import data by scraping the website. Select only columns Date, HomeTeam, AwayTeam, FTHG (home team goals), FTAG (away team goals) and filter rows with a valid (not NA) Date.
+3.  Using dplyr and tidyr packages (no for loops!), compute statistics for every team (matches, wins, loses, draws, points, points per match). Hint: mutate a column with the outcome of the match (for instance, H = home teams wins, A = away team wins, P = draw). Then group by team and outcome (home and away) and hence spread the outcome. Do this step without the use of AI.
+4.  Come up with at least 3 data questions on the data at hand. Just write the questions, do not find the answers.
+
+## Domanda 1
+
+Per importare i dati mediante web scraping, leggerei innanzitutto la pagina "Italy Football Results and Betting Odds" ed estrarrei tutti i collegamenti presenti. Poiché la pagina contiene sia informazioni descrittive sia dataset relativi a competizioni diverse (Serie A e Serie B), filtrerei esclusivamente i link corrispondenti ai file CSV della Serie A. Una volta individuati i file delle varie stagioni, li importerei automaticamente in R e li unirei in un unico dataset. Infine manterrei solo le colonne Date, HomeTeam, AwayTeam, FTHG e FTAG, eliminando le osservazioni con data mancante (NA). Un'altra osservazione aprendo la pagina web è che nelle stagioni dal 1993/1994 al 1996/1997 ci sono solo i dati della Serie A, dalla stagione 1997/1998 iniziano ad esserci Serie A e B.
+
+## Domanda 2
+
+Dopo aver osservato che la pagina web contiene dataset di più competizioni italiane e alcuni link aggiuntivi non pertinenti all'analisi. Ho chiesto all'AI (Copilot) di implementare una procedura che selezionasse esclusivamente i file CSV relativi alla Serie A prima dell'importazione dei dati.
+
+```{r}
+library(rvest)
+library(dplyr)
+library(purrr)
+library(stringr)
+library(readr)
+
+# Pagina contenente i dataset italiani
+url <- "https://www.football-data.co.uk/italym.php"
+
+# Legge la pagina
+page <- read_html(url)
+
+# Estrae tutti i link e il relativo testo
+links_df <- tibble(
+  text = page %>%
+    html_elements("a") %>%
+    html_text2(),
+  
+  href = page %>%
+    html_elements("a") %>%
+    html_attr("href")
+)
+
+# Seleziona solamente i link dei dataset di Serie A
+serieA_links <- links_df %>%
+  filter(str_detect(text, "^Serie A")) %>%
+  pull(href)
+
+# Costruisce gli URL completi
+serieA_links <- ifelse(
+  str_detect(serieA_links, "^http"),
+  serieA_links,
+  paste0("https://www.football-data.co.uk/", serieA_links)
+)
+
+# Importa tutti i CSV e li unisce
+serieA <- map_dfr(
+  serieA_links,
+  ~ read_csv(.x, show_col_types = FALSE)
+)
+
+# Mantiene solo le variabili richieste
+serieA_clean <- serieA %>%
+  select(Date, HomeTeam, AwayTeam, FTHG, FTAG) %>%
+  filter(!is.na(Date))
+
+# Controllo finale
+glimpse(serieA_clean)
+
+head(serieA_clean)
+```
+
+## Domanda 3
+
+```{r}
+library(tidyr)
+
+# crea una nuova colonna con chi ha vinto
+serieA_clean <- serieA_clean %>%
+  mutate( esito_match = ifelse (FTHG > FTAG,"H",ifelse(FTHG < FTAG, "A", "P")))
+
+serieA_clean
+```
+
+Creo due tabelle HomeTeam e AwayTeam che contengono in Team il nome della squadra e in Risultato (W = vinto, L = perso, P = pari).
+
+```{r}
+HomeTeam <- serieA_clean |>
+  mutate (Team = HomeTeam, 
+          Risultato = ifelse(esito_match =="H", "W",
+                             ifelse(esito_match == "A", "L", "P"))) |>
+  select(Team, Risultato)
+
+HomeTeam
+
+AwayTeam <- serieA_clean |>
+  mutate (Team = AwayTeam, 
+          Risultato = ifelse(esito_match =="A", "W",
+                             ifelse(esito_match == "H", "L", "P"))) |>
+  select(Team, Risultato)
+
+AwayTeam 
+
+
+```
+
+Adesso unisco le due tabelle e le raggruppo per le varie squadre. Conto il numero di partite, le vittore, le sconfitte e i pareggi
+
+```{r}
+#unisco le due tabelle
+risultati <- bind_rows(HomeTeam, AwayTeam)
+
+# per ogni squadra conto: partite vinte (W), perse (L) e pareggiate (P)
+risultati <- risultati |>
+  group_by(Team, Risultato) |>
+  summarise(Num_match = n()) |>
+  pivot_wider(
+    names_from = Risultato,
+    values_from = Num_match,
+    values_fill = 0
+  )
+risultati
+```
+
+Adesso alla tabella aggiungo il punteggio totale ottenuto da ogni squadra che per convenzione sarà: 3pt ogni vittoria, 0pt ogni sconfitta, 1pt per i pareggi. Infine calcolo la media dei punti per partita.
+
+```{r}
+risultati <- risultati |>
+  mutate(
+    Partite = W + P + L,
+    Punti = 3 * W + P,
+    Punti_per_Partita = Punti / Partite
+  ) |>
+  arrange(desc(Punti_per_Partita))
+
+risultati
+```
+
+Volendo potevo fare tutto in un unico script in questo modo:
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+risultati <- bind_rows(
+
+  serieA_clean |>
+    mutate(
+      Team = HomeTeam,
+      Risultato = ifelse(
+        esito_match == "H", "W",
+        ifelse(esito_match == "A", "L", "P")
+      )
+    ) |>
+    select(Team, Risultato),
+
+  serieA_clean |>
+    mutate(
+      Team = AwayTeam,
+      Risultato = ifelse(
+        esito_match == "A", "W",
+        ifelse(esito_match == "H", "L", "P")
+      )
+    ) |>
+    select(Team, Risultato)
+
+) |>
+  group_by(Team, Risultato) |>
+  summarise(
+    Num_match = n()
+  ) |>
+  pivot_wider(
+    names_from = Risultato,
+    values_from = Num_match,
+    values_fill = 0
+  ) |>
+  mutate(
+    Partite = W + P + L,
+    Punti = 3 * W + P,
+    Punti_partita = round(Punti / Partite, 3)
+  ) |>
+  arrange(desc(Punti_partita))
+
+risultati
+
+```
+
+Ordinando le squadre per `Punti_partita` è possibile individuare la squadra con il miglior rendimento storico nel periodo analizzato. La prima posizione della tabella risultante rappresenta quindi la candidata a essere considerata la migliore squadra italiana dal 1993 a oggi.
+
+## Domanda 4
+
+1.  Qual è la media di gol segnati per partita da ciascuna squadra di Serie A nel periodo considerato?
+2.  Quale squadra ha mostrato il miglior fair play nella stagione 2025/2026, considerando il minor numero di ammonizioni ed espulsioni ricevute in media?
+3.  Quale squadra ha sovvertito piu' frequentemente i pronostici dei bookmaker vincendo partite in cui era considerata sfavorita, e contro quali avversari è accaduto più spesso?
