@@ -1,0 +1,390 @@
+---
+title: "The Elo method in chess"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE, message=FALSE)
+```
+
+**Elo method** was coined by the physics professor and excellent chess player Arpad Elo. In 1970, FIDE, the World Chess Federation, agreed to adopt the Elo Rating System.
+
+The method works as follows. Suppose that players $i$ and $j$ match. Let $s_{i,j}$ be the **actual score** of $i$ in the match against $j$. We have that:
+
+- $s_{i,j} = 1$ if $i$ wins;
+- $s_{i,j} = 0$ if $i$ loses; and
+- $s_{i,j} = 0.5$ if there is a draw.
+
+Notice that the actual score $s_{j,i}$ of $j$ in the match against $i$ is $1 - s_{i,j}$. Let $\mu_{i,j}$ be the **expected score** of $i$ in the match against $j$. We have that:
+
+$$
+\begin{array}{lll}
+\mu_{i,j} & = & \frac{1}{1 + 10^{-(r_i - r_j) / \zeta}} = 
+\frac{10^{r_i / \zeta}}{10^{r_i / \zeta} + 10^{r_j / \zeta}} \\\\
+\end{array}
+$$
+
+with $r_i$ and $r_j$ the ratings of $i$ and $j$ before the match and $\zeta$ is a constant. Notice that the expected score $\mu_{j,i}$ of $j$ in the match against $i$ is $1 - \mu_{i,j}$.
+
+```{r logistic, echo = FALSE, eval = TRUE}
+## Logistic function
+logistic = function(x, z=400) {
+  return(1 / (1 + 10^(-x / z)))
+}
+limit = 1000
+plot(logistic, xlim=c(-limit, limit), lwd=3, xlab="rating difference", ylab = "logistic")
+abline(h=0.5, lty=2)
+```
+
+We assume that initially all player ratings are equal to 0. When players $i$ and $j$ match, the new ratings $r_i$ of $i$ and $r_j$ of $j$ are modified using the following update rule:
+
+$$
+\begin{array}{lll}
+r_{i} & \leftarrow & r_i + \kappa (s_{i,j} - \mu_{i,j}) 
+\\
+r_j & \leftarrow & r_j + \kappa (s_{j,i} - \mu_{j,i})
+\end{array}
+$$
+
+where $\kappa$ is a constant.
+
+The Elo thesis is:
+
+> *If a player performs as expected, it gains nothing. If it performs better than expected, it is rewarded, while if it performs poorer than expected, it is penalized.*
+
+This challenge is ispired by [Chess ratings - Elo versus the Rest of the World](https://www.kaggle.com/c/chess#description) Kaggle competition.
+
+## Downloads
+
+- A [CSV](data.csv) with outcomes of 65053 distinct chess games (White, Black and Score). The possible values for Score represent the three possible outcomes of a chess game (1=White wins, 0.5=draw, 0=Black wins). Read details.
+
+```{r}
+library(readr)
+chess <- read_csv("data.csv") 
+chess
+
+```
+
+Da qui per iniziare a capire il punteggio di ogni giocarore vorrei ottenere per ogni partita il punteggio di White e il punteggio di Black.
+
+```{r}
+library(tidyr)
+library(dplyr)
+
+White_point <- chess |>
+  mutate (Player1 = White, Opponent = Black, Points = Score) |>
+  select (Player1, Opponent, Points)
+
+Black_point <- chess |>
+  mutate (Player1 = Black, Opponent = White, Points = 1 - Score) |>
+  select(Player1, Opponent, Points)
+
+match_point <- bind_rows(White_point, Black_point)
+
+match_point
+```
+
+## Challenges
+
+1.  Has the White an advantage over the Black, that is, is there a first-mover advantage?
+2.  Write a function that computes the player point rating (1 point for wins, 0.5 points for draws, 0 points for defeats). How are point ratings distributed? Why?
+3.  An interesting property of Elo's ratings is that the sum of all player ratings is always 0. Formally show this property. (Hint: use the fact that $s_{i,j} + s_{j,i}=1$ and $\mu_{i,j} + \mu_{j,i} =1$)
+4.  Write a function that computes the player Elo rating (set $\zeta = 400$ and $\kappa = 25$) (Hint: take advantage of the 0-sum property to optimize the code). Obserse its distribution: why is different from the point distribution? Verify the 0-sum property for Elo's ratings
+5.  Are point and Elo ratings correlated? Are top Elo players overlapping with top point players?
+6.  Test if the number of played games has an effect on the Elo and point player ratings
+
+### Domanda 1
+
+Per vedere se il Bianco parte favorito per la vittoria devo fare una media delle volte in cui ha vinto il Bianco rispetto al Nero, o ancora meglio confrontare i tre risultati possibili per avere le percentuali e poter costruire un grafico che mostri il risultato.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+first_mover_advantage <- chess |>
+  count(Score) |>
+  mutate(
+    Percentuale = n / sum(n) * 100,
+    Risultato = case_when(
+      Score == 1   ~ "Vittoria Bianco",
+      Score == 0.5 ~ "Pareggio",
+      Score == 0   ~ "Vittoria Nero"
+    )
+  )
+
+first_mover_advantage
+
+ggplot(first_mover_advantage,
+       aes(x = Risultato,
+           y = Percentuale,
+           fill = Risultato)) +
+  geom_col() +
+  labs(
+    title = "Distribuzione degli esiti delle partite",
+    x = "Esito",
+    y = "Percentuale (%)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Per verificare l'esistenza di un vantaggio della prima mossa, sono state calcolate le frequenze e le percentuali dei possibili esiti delle partite. La percentuale di vittorie del Bianco risulta maggiore di quella del Nero, ciò suggerisce la presenza di un vantaggio per il giocatore che muove per primo.
+
+Tuttavia, una quota molto elevata di partite termina in pareggio, indicando che il vantaggio del Bianco non è sufficiente, nella maggior parte dei casi, a determinare automaticamente l'esito dell'incontro. I dati forniscono quindi un'evidenza empirica a favore di un vantaggio del Bianco, pur mantenendo il pareggio come esito più comune.
+
+### Domanda 2
+
+Per ogni giocatore voglio sapere: il numero di partire e i punti totali da lui ottenuti. Dato che mi sercira' per la domanda dopo aggiungo direttamente una colonan in cui calcolo la media dei punteggi ottenuti da un determinato giocatore.
+
+```{r}
+rating <- match_point |>
+  group_by(Player1) |>
+  summarise(
+    Point_Rating = sum(Points),
+    Num_Match = n(),
+    Points_Per_Game = Point_Rating / Num_Match
+    ) |>
+  arrange(desc(Point_Rating))
+
+rating
+
+library(ggplot2)
+
+ggplot(rating, aes(x = Point_Rating)) +
+  geom_histogram() +
+  labs(
+    title = "Distribuzione dei Point Rating",
+    x = "Point Rating",
+    y = "Numero di giocatori"
+  )
+
+```
+
+L'istogramma dei Point Rating mostra che la maggior parte dei giocatori ha accumulato un numero relativamente basso di punti, mentre solo pochi giocatori raggiungono valori molto elevati. La distribuzione non risulta perfettamente simmetrica ma presenta una coda verso destra. Questo comportamento è atteso, poiché nel dataset sono presenti molti giocatori occasionali che disputano poche partite e ottengono pochi punti, mentre un numero ridotto di giocatori più attivi o più forti riesce ad accumulare punteggi molto elevati.
+
+### Domanda 3
+
+#### Proprietà della somma nulla
+
+I rating dei giocatori $i$ e $j$ vengono aggiornati secondo le formule
+
+$r_i' = r_i + \kappa(s_{i,j}-\mu_{i,j})$
+
+e
+
+$r_j' = r_j + \kappa(s_{j,i}-\mu_{j,i})$.
+
+Sommando i due rating aggiornati si ottiene
+
+$r_i' + r_j' =
+r_i + \kappa(s_{i,j}-\mu_{i,j})
++
+r_j + \kappa(s_{j,i}-\mu_{j,i})$.
+
+Raccogliendo i termini,
+
+$r_i' + r_j'
+=
+(r_i+r_j)
++
+\kappa[(s_{i,j}+s_{j,i})-(\mu_{i,j}+\mu_{j,i})]$.
+
+Per definizione del punteggio effettivo,
+
+$s_{i,j}+s_{j,i}=1$.
+
+Inoltre, per definizione del punteggio atteso,
+
+$\mu_{i,j}+\mu_{j,i}=1$.
+
+Sostituendo tali uguaglianze si ottiene
+
+$r_i' + r_j'
+=
+(r_i+r_j)+\kappa(1-1)$.
+
+Quindi
+
+$r_i' + r_j' = r_i+r_j$.
+
+Pertanto la somma dei rating dei due giocatori coinvolti nella partita rimane invariata.
+
+Poiché tutti gli altri giocatori non subiscono modifiche al proprio rating, anche la somma totale dei rating di tutti i giocatori rimane invariata dopo ogni aggiornamento.
+
+Dato che inizialmente tutti i giocatori hanno rating pari a 0, la somma iniziale dei rating è
+
+$\sum_i r_i = 0$.
+
+Essendo la somma totale invariata dopo ogni partita, segue che
+
+$\sum_i r_i = 0$
+
+in qualsiasi momento.
+
+Si conclude quindi che il sistema Elo è un sistema a somma nulla (zero-sum): i punti Elo guadagnati da un giocatore coincidono esattamente con quelli persi dall'avversario.
+
+### Domanda 4
+
+```{r}
+#Ricava una lista contenente tutti i codici dei giocatori
+players <- union(chess$White, chess$Black)
+
+#crea la tabella con i giocatori e l'assunzione che all'inizio tutti abbiano Elo=0
+anagrafica <- data.frame(
+  Player = players,
+  Elo = 0
+)
+
+head(anagrafica)
+
+zeta <- 400
+k <- 25
+
+for(i in 1:nrow(chess)) {
+  
+  white_player <- chess$White[i]
+  black_player <- chess$Black[i]
+  
+  score_white <- chess$Score[i]
+  #recupera gli elo attuali 
+  elo_white <- anagrafica$Elo[
+    anagrafica$Player == white_player
+  ]
+  
+  elo_black <- anagrafica$Elo[
+    anagrafica$Player == black_player
+  ]
+  #calcola la prob. attesa di vittoria dei Bianco usando la formula di Elo
+  expected_white <-
+    1 / (1 + 10^(-(elo_white - elo_black)/zeta))
+  #calcola l'Elo trasferito
+  delta <- k * (score_white - expected_white)
+  
+  anagrafica$Elo[
+    anagrafica$Player == white_player
+  ] <-
+    elo_white + delta
+  
+  anagrafica$Elo[
+    anagrafica$Player == black_player
+  ] <-
+    elo_black - delta
+}
+#mostra i punteggi di Elo
+elo_rating <- anagrafica |>
+  arrange(desc(Elo))
+
+head(elo_rating)
+
+#dimostrazione richiesta
+sum(elo_rating$Elo)
+```
+
+Notiamo che la proprità zero-sum sopra dimostrata viene rispettata.
+
+```{r}
+ggplot(elo_rating,
+       aes(x = Elo)) +
+  geom_histogram() +
+  labs(
+    title = "Distribuzione Elo Rating",
+    x = "Elo",
+    y = "Numero di giocatori"
+  )
+```
+
+La distribuzione degli Elo Rating è diversa da quella dei Point Rating perché il rating Elo non misura semplicemente i punti accumulati, ma la forza relativa dei giocatori rispetto agli avversari affrontati. Inoltre, il sistema Elo è un sistema a somma nulla: i punti guadagnati da un giocatore corrispondono ai punti persi dall'avversario. Per questo motivo i rating Elo tendono a distribuirsi attorno allo zero, mentre i Point Rating sono tutti non negativi e tendono ad aumentare con il numero di partite disputate.
+
+### Domanda 5
+
+Il coefficiente di correlazione tra Point Rating ed Elo Rating risulta pari a 0.72. Tale valore indica una correlazione positiva abbastanza forte tra le due misure: in generale, i giocatori che ottengono molti punti tendono ad avere anche rating Elo elevati. Tuttavia la correlazione non è perfetta, poiché il sistema Elo tiene conto della forza relativa degli avversari affrontati e dei risultati attesi, mentre il Point Rating considera solamente i punti accumulati. Di conseguenza, giocatori con un numero simile di punti possono presentare Elo differenti. Lo possiamo notare anche dal grafico sottostante,
+
+```{r}
+#Unisco la tabelal con il rating con la tabella contenente Elo
+analisi <- rating |>
+  rename(Player = Player1) |>
+  left_join(anagrafica, by = "Player")
+
+analisi
+
+# Coefficiente di correlazione fra due variabili Point_Raiting e Elo
+cor(analisi$Point_Rating,
+    analisi$Elo)
+
+ggplot(analisi,
+       aes(x = Point_Rating,
+           y = Elo)) +
+  geom_point() +
+  labs(
+    title = "Point Rating vs Elo Rating",
+    x = "Point Rating",
+    y = "Elo Rating"
+  )
+```
+
+Tuttavia, confrontando i 10 migliori giocatori secondo i due criteri, emerge che soltanto 1 giocatore compare in entrambe le classifiche. Questo risultato mostra che le due metriche non misurano esattamente lo stesso concetto. Il Point Rating è influenzato principalmente dall'accumulo dei punti e dal numero di partite disputate, mentre l'Elo Rating tiene conto della forza degli avversari affrontati e dei risultati attesi. Di conseguenza, i migliori giocatori secondo l'Elo non coincidono necessariamente con quelli che hanno ottenuto il maggior numero di punti.
+
+```{r}
+top_points <- analisi |>
+  arrange(desc(Point_Rating)) |>
+  slice(1:10)
+
+top_elo <- analisi |>
+  arrange(desc(Elo)) |>
+  slice(1:10)
+
+top_points$Player
+top_elo$Player
+
+intersect(top_points$Player,
+          top_elo$Player)
+length(
+  intersect(top_points$Player,
+            top_elo$Player)
+)
+
+```
+
+### Domanda 6
+
+Per valutare l'effetto del numero di partite giocate sui rating dei giocatori sono state calcolate le correlazioni tra il numero di incontri disputati e le due misure considerate.
+
+Il grafico sottostante mostra una chiara relazione positiva tra il numero di partite giocate e il Point Rating. I giocatori che disputano più incontri tendono ad accumulare un numero maggiore di punti. Questo risultato è atteso, poiché il Point Rating rappresenta una somma cumulativa dei punti ottenuti nel tempo. Di conseguenza, il numero di partite giocate ha un forte effetto sul Point Rating.
+
+```{r}
+# verifica se il numero di partite giocate influenza il rating 
+cor(analisi$Num_Match,
+    analisi$Point_Rating)
+
+ggplot(analisi,
+       aes(x = Num_Match,
+           y = Point_Rating)) +
+  geom_point() +
+  labs(
+    title = "Numero partite vs Point Rating",
+    x = "Partite giocate",
+    y = "Point Rating"
+  )
+```
+
+Svolgendo la stessa analisi con gli indici di Elo è possibile notare che, sebbene la relazione sia ancora positiva, risulta sensibilmente più debole rispetto a quella osservata per il Point Rating. Ciò suggerisce che il numero di partite giocate influisce solo parzialmente sul rating Elo.
+
+```{r}
+cor(analisi$Num_Match,
+    analisi$Elo)
+
+ggplot(analisi,
+       aes(x = Num_Match,
+           y = Elo)) +
+  geom_point() +
+  labs(
+    title = "Numero partite vs Elo Rating",
+    x = "Partite giocate",
+    y = "Elo Rating"
+  )
+```
+
+In conclusione, mentre il Point Rating premia principalmente l'attività del giocatore, l'Elo Rating riflette maggiormente la qualità delle prestazioni e la forza degli avversari affrontati. Pertanto, giocare molte partite non garantisce automaticamente un Elo elevato, mentre porta quasi inevitabilmente a un aumento del Point Rating.
