@@ -1,0 +1,228 @@
+---
+title: "Concentration of S&P 500 index"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, message = FALSE)
+```
+
+In this data challege we study how concentrated the S&P 500 is among its constituent companies.
+
+1.  The S&P 500 (Standard & Poor's 500) is a stock market index that tracks the performance of 500 of the largest publicly traded companies in the United States.
+2.  It covers roughly 80% of the total value of the U.S. stock market.
+3.  It is a market-capitalization-weighted index. Larger companies have a much bigger impact on its value than smaller components
+
+We will use:
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+library(ineq)
+```
+
+The three packages have different roles:
+
+``` text
+tidyquant    retrieve the S&P 500 constituents and weights
+tidyverse    manipulate and visualize the data
+ineq         calculate the Lorenz curve and Gini coefficient
+```
+
+Our main questions are:
+
+1.  How unequal are the company weights in the S&P 500?
+2.  How much of the index is represented by its largest companies?
+3.  What does the Lorenz curve tell us about concentration?
+4.  What is the Gini coefficient of the S&P 500 weights?
+
+## Domanda 1: Quanto sono ineguali i pesi delle aziende nell'S&P 500?
+
+Per prima cosa dobbiamo importare i dati e poi calcolare la media, la mediana, il massimo e il minimo per vedere come sono distribuiti.
+
+```{r}
+# Importazione del dataset 
+sp500_weights <- tq_index("SP500")
+
+sp500_weights %>%
+  summarise(
+    peso_medio = mean(weight),
+    peso_mediano = median(weight),
+    peso_max = max(weight),
+    peso_min = min(weight)
+  )
+```
+
+Peso Medio (0.00198 $\approx$ 0.20%): Rappresenta il peso teorico medio che ogni azienda avrebbe se l'indice fosse perfettamente equamente ponderato (vicino al benchmark ideale di $1/500 = 0.002$).
+
+Peso Mediano (0.00068 $\approx$ 0.07%): Il valore centrale della distribuzione. Il fatto che la mediana sia significativamente inferiore alla media indica una forte asimmetria positiva (right-skewness): la stragrande maggioranza delle aziende ha un peso estremamente ridotto e si posiziona al di sotto della media.
+
+Peso Massimo (0.0777 $\approx$ 7.77%): Il peso della singola azienda dominante all'interno dell'indice. Questo valore evidenzia come un unico gigante tecnologico o finanziario detenga quasi l'8% dell'intero paniere statunitense.
+
+Peso Minimo (3.00e-08 $\approx$ 0.000003%): Il peso quasi nullo assegnato alle aziende a minore capitalizzazione presenti nella parte inferiore della classifica.
+
+```{r}
+# Vede le prime 10 aziende per peso
+top_10 <- sp500_weights %>%
+  arrange(desc(weight)) %>%
+  slice(1:10)
+
+top_10
+
+# Somma il loro peso complessivo
+sum(top_10$weight)
+
+sp500_weights %>%
+  arrange(desc(weight)) %>%
+  slice(1:15) %>%
+  ggplot(aes(x = weight, y = reorder(company, weight))) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Le prime 15 aziende per peso nell'S&P 500",
+    x = "Peso nell'Indice",
+    y = "Azienda"
+  ) +
+  theme_minimal()
+```
+
+Quota delle Top 10 (37.36%): La somma dei pesi delle prime 10 aziende mostra che sole 10 società (su un totale di circa 500) controllano oltre un terzo del valore dell'intero indice
+
+```{r}
+library(ggplot2)
+library(ggrepel) # per le etichette di testo
+
+# 1. Ordiniana il dataset e fissio l'ordine decrescente per l'asse X
+sp500_sorted <- sp500_weights %>%
+  arrange(desc(weight)) %>%
+  mutate(company_f = factor(company, levels = company))
+
+# 2. Estrapolo il MASSIMO (prima azienda) e il MINIMO (ultima azienda)
+azienda_max <- sp500_sorted %>% slice(1)
+azienda_min <- sp500_sorted %>% slice(n())
+
+# 3. Crea il grafico 
+ggplot(sp500_sorted, aes(x = company_f, y = weight, group = 1)) +
+  # Uso linewidth invece di size per le linee
+  geom_line(color = "steelblue", linewidth = 1) +
+  
+  # Usiamo size per i punti (qui è corretto)
+  geom_point(data = azienda_max, color = "darkblue", size = 3) +
+  geom_text_repel(
+    data = azienda_max, 
+    aes(label = paste0("Max: ", company, "\n(", round(weight * 100, 2), "%)")),
+    box.padding = 0.8, color = "darkblue", fontface = "bold"
+  ) +
+  
+  geom_point(data = azienda_min, color = "darkblue", size = 3) +
+  geom_text_repel(
+    data = azienda_min, 
+    aes(label = paste0("Min: ", company, "\n(", round(weight * 100, 2), "%)")),
+    box.padding = 0.8, color = "darkblue", fontface = "bold"
+  ) +
+  
+  labs(
+    title = "Curva di Concentrazione dei Pesi nell'S&P 500",
+    subtitle = "Aziende ordinate dalla più grande alla più piccola",
+    x = "Aziende (ordinate per peso decrescente)",
+    y = "Peso nell'Indice"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+```
+
+Il grafico conferma che l'S&P 500, pur essendo un indice diversificato per numero di componenti, presenta una **struttura marcatamente ineguale** a causa della sua natura *market-capitalization-weighted*. La performance complessiva dell'indice risulta quindi fortemente dipendente dall'andamento di poche aziende leader, mentre la coda di centinaia di aziende minori ha un impatto marginale sul valore complessivo.
+
+## Domanda 2: Quanto dell'indice è rappresentato dalle sue aziende più grandi?
+
+Per rispondere a questa domanda bisogna analizzare quanta fetta dell'indice viene occupata progressivamente dalle prime 5, 10, 25, 5 e 100 aziende.
+
+```{r}
+# 1. Creazione della tabella con il calcolo cumulativo
+sp500_cumulativo <- sp500_weights %>%
+  arrange(desc(weight)) %>%
+  mutate(
+    rank = row_number(),                 # Posizione in classifica (1 = la più grande)
+    peso_cumulativo = cumsum(weight)     # Somma progressiva dei pesi
+  )
+
+# 2. Ispezione delle soglie chiave (es. top 5, 10, 25, 50, 100)
+sp500_cumulativo %>%
+  filter(rank %in% c(5, 10, 25, 50, 100, 250)) %>%
+  select(rank, company, weight, peso_cumulativo)
+
+ggplot(sp500_cumulativo, aes(x = rank, y = peso_cumulativo)) +
+  geom_line(color = "darkblue", linewidth = 1.2) +
+  labs(
+    title = "Concentrazione Cumulativa dell'S&P 500",
+    subtitle = "Quanto pesa l'insieme delle prime N aziende sull'indice totale",
+    x = "Numero di aziende (ordinate per grandezza)",
+    y = "Peso Cumulativo (quota dell'indice)"
+  ) +
+  theme_minimal()
+```
+
+L'analisi della somma cumulata dei pesi dimostra che l'S&P 500 è fortemente sbilanciato verso i suoi componenti di maggiori dimensioni. La concentrazione cresce in modo esponenziale nei primi ranghi:
+
+- Le prime **25 aziende** (appena il 5% del totale dei costituenti) rappresentano la **maggioranza assoluta del mercato (\~52.1%)**.
+
+- Le prime **100 aziende** coprono ben **tre quarti (75.1%)** del valore complessivo dell'indice.
+
+Questo evidenzia che, nonostante l'S&P 500 sia considerato l'emblema della diversificazione azionaria statunitense, la sua performance effettiva è guidata in modo preponderante da un oligopolio ristretto di grandi aziende.
+
+## Domanda 3: Cosa ci dice la curva di Lorenz sulla concentrazione?
+
+La Curva di Lorenz mette in relazione la **quota cumulativa delle aziende** (asse X) con la **quota cumulativa dei pesi** (asse Y), confrontandola con la cosiddetta *linea dell'uguaglianza perfetta* (la diagonale a 45 gradi, dove il 10% delle aziende possiede il 10% del peso, il 20% possiede il 20%, ecc.).
+
+```{r}
+# 1. Calcola la Curva di Lorenz sui pesi dell'S&P 500
+curva_lorenz <- Lc(sp500_weights$weight)
+# p = quota cumulativa delle aziende, e L = quota cumulativa del peso
+
+# Conversione dei dati di Lorenz in un data frame 
+lorenz_df <- tibble(
+  p = curva_lorenz$p, # Quota cumulativa delle aziende (da 0 a 1)
+  L = curva_lorenz$L  # Quota cumulativa dei pesi (da 0 a 1)
+)
+
+# Creazione del grafico con ggplot2
+ggplot(lorenz_df, aes(x = p, y = L)) +
+  # Linea di perfetta uguaglianza (diagonale a 45 gradi)
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray50", linewidth = 1) +
+  # Curva di Lorenz effettiva
+  geom_line(color = "blue", linewidth = 1.2) +
+  labs(
+    title = "Curva di Lorenz dei Pesi nell'S&P 500",
+    subtitle = "Confronto con la linea di perfetta uguaglianza (diagonale)",
+    x = "Quota cumulativa delle aziende (frazione)",
+    y = "Quota cumulativa dei pesi (frazione)"
+  ) +
+  theme_minimal()
+```
+
+Il grafico mostra la significativa disuguaglianza rispetto all'uguaglianza perfetta (linea trateggiata) del mercato azionario statunitense.
+
+## Domanda 4: Cos'è il coefficiente di Gini del peso delle S&P 500?
+
+Il coefficiente di Gini sintetizza l'intera Curva di Lorenz in un unico numero compreso tra **0** (uguaglianza perfetta: tutte le aziende hanno lo stesso peso) e **1** (massima disuguaglianza assoluta: un'azienda possiede il 100% del peso e tutte le altre zero).
+
+```{r}
+
+# Calcola il coefficiente di Gini sui pesi dell'S&P 500
+indice_gini <- ineq(sp500_weights$weight, type = "Gini")
+
+
+indice_gini
+```
+
+### Conclusioni
+
+L'analisi quantitativa condotta sulla struttura dei pesi dell'indice S&P 500 rivela un livello di concentrazione e disuguaglianza del capitale eccezionalmente elevato.
+
+- **Asimmetria della Distribuzione:** La forte discrepanza tra la media ($0.20\%$) e la mediana ($0.07\%$) conferma un'asimmetria positiva accentuata. La stragrande maggioranza dei 500 componenti detiene un peso del tutto marginale sulle dinamiche del paniere.
+
+- **Dominio al Vertice:** La concentrazione cumulativa evidenzia una spinta oligarchica **sole 10 aziende controllano oltre il** $37\%$ dell'indice, mentre **le prime 25 costituenti rappresentano la maggioranza assoluta (**$>52\%$) dell'intero valore di mercato.
+
+- **Evidenza Grafica e Scalare (Lorenz e Gini):** La distanza drastica tra la Curva di Lorenz e la diagonale di equidistribuzione sintetizza visivamente questo divario. Il valore del **Coefficiente di Gini, pari a 0.71**, consolida matematicamente l'osservazione: l'indice si colloca in una zona di forte polarizzazione.
