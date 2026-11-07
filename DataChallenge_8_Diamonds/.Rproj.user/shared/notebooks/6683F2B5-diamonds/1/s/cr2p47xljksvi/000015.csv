@@ -1,0 +1,1 @@
+"0","diamonds %>% group_by(clarity) %>% summarise(mean_carat = mean(carat), mean_price = mean(price))"

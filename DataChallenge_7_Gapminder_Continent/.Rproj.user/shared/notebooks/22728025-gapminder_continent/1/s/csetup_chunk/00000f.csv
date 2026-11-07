@@ -1,0 +1,2 @@
+"0","# cache results"
+"0","knitr::opts_chunk$set(cache=TRUE, message=FALSE)"

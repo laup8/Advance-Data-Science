@@ -1,0 +1,32 @@
+{
+    "id": "6675FA86",
+    "path": "C:/Users/laura/Desktop/Magistrale/Advance Data Science/DataChallenge8/diamonds.Rmd",
+    "project_path": "diamonds.Rmd",
+    "type": "r_markdown",
+    "hash": "1938200665",
+    "contents": "",
+    "dirty": false,
+    "created": 1794065620984.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "75,0",
+        "scrollLine": "115",
+        "last_setup_crc32": "978c8641574ab98f",
+        "rmdVisualMode": "true",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "1",
+        "rmdVisualCollapsedChunks": "",
+        "rmdVisualModeLocation": "3155:1200"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1794069031,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1794069031574,
+    "read_only": false,
+    "read_only_alternatives": []
+}

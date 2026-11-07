@@ -1,0 +1,2 @@
+"0","# Dimensione media in carati per categoria"
+"0","diamonds %>% group_by(cut) %>% summarise(mean_carat = mean(carat), mean_price = mean(price))"

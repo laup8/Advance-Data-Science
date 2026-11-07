@@ -1,0 +1,120 @@
+---
+title: "Diamonds quality"
+output:
+  html_document:
+    theme: spacelab
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+# cache results
+knitr::opts_chunk$set(cache=TRUE, message=FALSE)
+```
+
+In this data challenge we explore the qualities of diamonds and their association with price using the `ggplot2::diamonds` dataset:
+
+1.  First of all, observe that low quality diamonds (with respect to cut, color and clarity) are more expensive.
+2.  Using models, find an explanation and solve the apparent paradox.
+
+Recall that:
+
+- best cut is Ideal, worst is Fair
+- best color is D, worst is J
+- best clarity is IF, worst is I1
+
+### Domanda 1:
+
+```{r}
+library(tidyverse)
+library(patchwork)
+
+# 1. Boxplot del Prezzo Grezzo (scala log10) per Cut
+p_cut_raw <- ggplot(diamonds, aes(x = cut, y = price, fill = cut)) +
+  geom_boxplot(alpha = 0.6, outlier.alpha = 0.1, fatten = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_y_log10() +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Prezzo per Cut", x = "Cut (Fair -> Ideal)", y = "Prezzo (log10)")
+
+# 2. Boxplot del Prezzo Grezzo per Color
+p_col_raw <- ggplot(diamonds, aes(x = color, y = price, fill = color)) +
+  geom_boxplot(alpha = 0.6, outlier.alpha = 0.1, fatten = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_y_log10() +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Prezzo per Color", x = "Color (J -> D)", y = "")
+
+# 3. Boxplot del Prezzo Grezzo per Clarity
+p_clar_raw <- ggplot(diamonds, aes(x = clarity, y = price, fill = clarity)) +
+  geom_boxplot(alpha = 0.6, outlier.alpha = 0.1, fatten = 3) +
+  scale_fill_brewer(palette = "Pastel2") +
+  scale_y_log10() +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Prezzo per Clarity", x = "Clarity (I1 -> IF)", y = "")
+
+# Visualizzazione affiancata del paradosso
+p_cut_raw + p_col_raw + p_clar_raw + 
+  plot_annotation(title = "1. IL PARADOSSO: Diamanti di bassa qualità appaiono più costosi")
+```
+
+l prezzo grezzo (in scala logaritmica) rispetto al taglio (cut), al colore (color) e alla purezza (clarity), emerge una marcata anomalia apparente: per ciascuna delle tre variabili, i diamanti classificati nella qualità inferiore (es. Fair, colore J, purezza I1) registrano prezzi medi/mediani più alti rispetto a quelli di qualità eccellente (Ideal, colore D, purezza IF).
+
+### Domanda 2:
+
+L'analisi aggregata evidenzia che i diamanti di qualità inferiore presenti nel dataset hanno dimensioni mediamente molto più elevate (peso in carati, carat). Poiché la massa in carati determina in modo esponenziale il valore economico lordo, la dimensione oscura l'effetto reale della qualità.
+
+```{r}
+# Dimensione media in carati per categoria
+diamonds %>% group_by(cut) %>% summarise(mean_carat = mean(carat), mean_price = mean(price))
+diamonds %>% group_by(color) %>% summarise(mean_carat = mean(carat), mean_price = mean(price))
+diamonds %>% group_by(clarity) %>% summarise(mean_carat = mean(carat), mean_price = mean(price))
+```
+
+```{r}
+library(modelr)
+
+# 1. Fit del modello lineare multiplo (Log-price in funzione di carati e di tutte le qualità)
+mod_full <- lm(log(price) ~ log(carat) + cut + color + clarity, data = diamonds)
+
+# 2. Aggiunta dei residui al dataset
+diamonds_res <- diamonds %>%
+  mutate(log_price = log(price)) %>%
+  add_residuals(mod_full, var = "resid")
+
+# 3. Grafico dei Residui per Cut
+p_cut_res <- ggplot(diamonds_res, aes(x = cut, y = resid, fill = cut)) +
+  geom_boxplot(alpha = 0.6, outlier.alpha = 0.1, fatten = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Residui per Cut", x = "Cut", y = "Residuo del Prezzo")
+
+# 4. Grafico dei Residui per Color
+p_col_res <- ggplot(diamonds_res, aes(x = color, y = resid, fill = color)) +
+  geom_boxplot(alpha = 0.6, outlier.alpha = 0.1, fatten = 3) +
+  scale_fill_brewer(palette = "Pastel1") +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Residui per Color", x = "Color", y = "")
+
+# 5. Grafico dei Residui per Clarity
+p_clar_res <- ggplot(diamonds_res, aes(x = clarity, y = resid, fill = clarity)) +
+  geom_boxplot(alpha = 0.6, outlier.alpha = 0.1, fatten = 3) +
+  scale_fill_brewer(palette = "Pastel2") +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Residui per Clarity", x = "Clarity", y = "")
+
+# Visualizzazione finale dei residui risolti
+p_cut_res + p_col_res + p_clar_res + 
+  plot_annotation(title = "2. PARADOSSO RISOLTO: A parità di peso, la qualità fa salire il prezzo")
+
+```
+
+Costruendo un modello di regressione lineare multipla $\log(\text{price}) \sim \log(\text{carat}) + \text{cut} + \text{color} + \text{clarity}$, isoliamo il contributo della dimensione. L'analisi dei residui ($observed = pattern + residual$) dimostra che, a parità di peso in carati, l'effetto della qualità viene pienamente ripristinato: i diamanti con elevato grado di taglio, colore e purezza mostrano residui positivi e significativamente più alti, confermando la logica economica del mercato.
