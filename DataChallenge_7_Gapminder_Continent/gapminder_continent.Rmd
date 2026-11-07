@@ -1,0 +1,120 @@
+---
+title: "How life expectancy change over time for each continent?"
+output:
+  html_document:
+    theme: spacelab
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+# cache results
+knitr::opts_chunk$set(cache=TRUE, message=FALSE)
+```
+
+Life expectancy for a country is the mean length of life over people of a country. Using variables life expectancy and population of a country:
+
+1.  derive a formula to compute life expectancy of a continent (a group of countries)
+2.  plot how life expectancy changed over time for each continent
+3.  do the same for the whole planet
+
+### Domanda 1:
+
+Per un gruppo di paesi (continente) l'aspettativa di vita è la media ponderata all'anno. Quindi partendo dalla formula della media ponderata avrò: $$L_{continent} = \frac{\sum_{i \in continent} (lifeExp_i \cdot pop_i)}{\sum_{i \in continent} pop_i}$$ dove: $L_{continent}$ è l'aspettativa di vita (media ponderata) all'anno $t$
+
+### Domanda 2 :
+
+```{r}
+library(tidyverse)
+library(gapminder)
+
+# 1. Calcolo per continente (media ponderata per popolazione)
+continent_lifeExp <- gapminder %>%
+  group_by(continent, year) %>%
+  summarise(
+    weighted_lifeExp = sum(lifeExp * pop) / sum(pop),
+    total_pop = sum(pop),
+    .groups = "drop"
+  )
+
+# 2. Calcolo per l'intero pianeta
+global_lifeExp <- gapminder %>%
+  group_by(year) %>%
+  summarise(
+    weighted_lifeExp = sum(lifeExp * pop) / sum(pop),
+    total_pop = sum(pop),
+    continent = "Planet",
+    .groups = "drop"
+  )
+
+# Uso i dataset per poter tracciare tutto insieme 
+all_levels <- bind_rows(continent_lifeExp, global_lifeExp)
+```
+
+
+```{r}
+ggplot(continent_lifeExp, aes(x = year, y = weighted_lifeExp, color = continent)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  theme_classic() +
+  labs(
+    title = "Evoluzione dell'Aspettativa di Vita per Continente",
+    subtitle = "Medie ponderate basate sulla popolazione dei paesi",
+    x = "Anno",
+    y = "Aspettativa di Vita Ponderata",
+    color = "Continente"
+  )
+```
+
+### Domanda 3: 
+```{r}
+library(tidyverse)
+library(gapminder)
+
+# 1. Calcolo per continente (media ponderata per popolazione)
+continent_lifeExp <- gapminder %>%
+  group_by(continent, year) %>%
+  summarise(
+    weighted_lifeExp = sum(lifeExp * pop) / sum(pop),
+    total_pop = sum(pop),
+    .groups = "drop"
+  )
+
+# 2. Calcolo per l'intero pianeta
+global_lifeExp <- gapminder %>%
+  group_by(year) %>%
+  summarise(
+    weighted_lifeExp = sum(lifeExp * pop) / sum(pop),
+    total_pop = sum(pop),
+    continent = "Planet",
+    .groups = "drop"
+  )
+
+# Uniamo i dataset per poter tracciare tutto insieme
+all_levels <- bind_rows(continent_lifeExp, global_lifeExp)
+
+# 3. Definiamo i colori personalizzati (i continenti con una palette Set2 e il Planet in nero acceso)
+continent_colors <- c(
+  "Africa" = "#fc8d62",
+  "Americas" = "#66c2a5",
+  "Asia" = "#a6d854",
+  "Europe" = "#8da0cb",
+  "Oceania" = "#e78ac3",
+  "Planet" = "#000000"  # Nero acceso per il pianeta
+)
+
+# 4. Grafico con linea del Pianeta più spessa e nera
+ggplot(all_levels, aes(x = year, y = weighted_lifeExp, color = continent, size = continent == "Planet")) +
+  geom_line() +
+  scale_color_manual(values = continent_colors) +
+  scale_size_manual(values = c(`FALSE` = 1, `TRUE` = 2)) + # Spessore maggiore per il pianeta (TRUE) rispetto ai continenti (FALSE)
+  guides(size = "none") + # Nascondiamo la legenda dello spessore
+  theme_classic() +
+  labs(
+    title = "Evoluzione dell'Aspettativa di Vita per Continente e Pianeta",
+    subtitle = "Il Pianeta è evidenziato in nero acceso e con linea più spessa",
+    x = "Anno",
+    y = "Aspettativa di Vita Ponderata",
+    color = "Continente / Area"
+  )
+```
+L'analisi congiunta dell'evoluzione demografica e dell'aspettativa di vita evidenzia una crescita globale costante nel corso dei decenni. L'adozione di una media ponderata basata sulla popolazione permette di riflettere accuratamente il peso demografico dei singoli paesi all'interno di ciascun continente e dell'intero pianeta. L'evidenziazione grafica del livello globale (Planet) in nero acceso e con uno spessore maggiore consente di percepire immediatamente il trend di crescita mondiale come punto di riferimento rispetto alle singole realtà continentali.
