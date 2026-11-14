@@ -1,0 +1,32 @@
+{
+    "id": "E41C7204",
+    "path": "C:/Users/laura/Desktop/Magistrale/Advance Data Science/DataChallenge9/nasa.Rmd",
+    "project_path": "nasa.Rmd",
+    "type": "r_markdown",
+    "hash": "1274014146",
+    "contents": "",
+    "dirty": false,
+    "created": 1794587002117.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "rmdVisualMode": "true",
+        "rmdVisualCollapsedChunks": "",
+        "rmdVisualModeLocation": "16658:13264",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "1",
+        "cursorPosition": "423,0",
+        "scrollLine": "482",
+        "last_setup_crc32": "1f023e687f788115"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1794645708,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1794645708511,
+    "read_only": false,
+    "read_only_alternatives": []
+}
